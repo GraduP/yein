@@ -116,6 +116,8 @@ public class GeoActivity extends AppCompatActivity implements SensorEventListene
 
     String end_lon; //목적지 좌표
     String end_lat;
+    String endX;    //최종 도착지 좌표
+    String endY;
     int complete = 0;   //최종 목적지로 향한다면 1
 
     SingleTonTTS tts;
@@ -140,15 +142,19 @@ public class GeoActivity extends AppCompatActivity implements SensorEventListene
 
         intent = getIntent();
         transferlist = (TransferItem) intent.getSerializableExtra("transferItem"); //transferlist추출 -> 이게 주 데이터
+        endX = (String) intent.getSerializableExtra("endX");
+        endY = (String) intent.getSerializableExtra("endY");
 
         if(transferlist.getPathItemList().size() == 0){ //다음 좌표가 최종 도착지일 때
-            end_lon = (String) intent.getSerializableExtra("endX");
-            end_lat = (String) intent.getSerializableExtra("endY");
+            end_lon = endX;
+            end_lat = endY;
             complete = 1;
+            Log.e("다음 목적지", "도착지");
         }
         else {  //다음 좌표가 정류장일 때
             end_lon = String.valueOf(transferlist.getPathItemList().get(0).getFx());
             end_lat = String.valueOf(transferlist.getPathItemList().get(0).getFy());
+            Log.e("다음 목적지", "정류장");
         }
 
         for (int i = 0; i < transferlist.getPathItemList().size(); i++) {
@@ -192,9 +198,33 @@ public class GeoActivity extends AppCompatActivity implements SensorEventListene
             if(location != null){
                 lat = location.getLatitude();
                 lon = location.getLongitude();
+                Log.e("location", String.valueOf(lat));
+                Log.e("location", String.valueOf(lon));
+
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        result = getPathData();
+                    }
+                }).start();
+
+                Handler api_handler = new Handler();
+                api_handler.postDelayed(new Runnable(){
+                    public void run(){
+                        parseResult();
+                    }
+                }, 2500);
+
+
+
+            }
+            else {
+                Log.e("location", "location null");
             }
         });
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+
+
 
         //티맵 api
         tmapview = new TMapView(this);
@@ -302,70 +332,68 @@ public class GeoActivity extends AppCompatActivity implements SensorEventListene
         return queryUrl;
     }
 
-    //경로 정보 파싱
+
     @Override
     protected void onStart() {
         super.onStart();
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                result = getPathData();
-                JSONParser jsonParser = new JSONParser();
+    }
 
-                Log.i("test", result);
+    //경로 정보 파싱
+    private void parseResult(){
+        JSONParser jsonParser = new JSONParser();
 
-                //item에 정보를 담아 list에 추가
-                try {
-                    org.json.simple.JSONObject jsonObj = (org.json.simple.JSONObject) jsonParser.parse(result);
-                    JSONArray parse_item = (JSONArray) jsonObj.get("features");
-                    totalIndex = parse_item.size();
-                    list = new ArrayList<com.example.myapplication.geo.datalist>();
-                    for(int i=0; i<parse_item.size(); i++){
-                        obj = (org.json.simple.JSONObject) parse_item.get(i);
-                        org.json.simple.JSONObject sample = (org.json.simple.JSONObject) obj.get("geometry");
-                        org.json.simple.JSONObject geo = (org.json.simple.JSONObject) obj.get("properties");
-                        item = new com.example.myapplication.geo.datalist();
-                        item.setType((String) sample.get("type"));
-                        if(sample.get("type").equals(str)){    //point data인 경우
-                            item.setIndex(Integer.parseInt(String.valueOf(geo.get("index"))));
-                            item.setDescription((String) geo.get("description"));
-                            item.setTurnType(String.valueOf(geo.get("turnType")));
+        Log.i("test", result);
 
-                            JSONArray coor = (JSONArray) sample.get("coordinates");
-                            item.setLongitude((Double) coor.get(0));
-                            item.setLatitude((Double) coor.get(1));
+        //item에 정보를 담아 list에 추가
+        try {
+            org.json.simple.JSONObject jsonObj = (org.json.simple.JSONObject) jsonParser.parse(result);
+            JSONArray parse_item = (JSONArray) jsonObj.get("features");
+            totalIndex = parse_item.size();
+            list = new ArrayList<com.example.myapplication.geo.datalist>();
+            for(int i=0; i<parse_item.size(); i++){
+                obj = (org.json.simple.JSONObject) parse_item.get(i);
+                org.json.simple.JSONObject sample = (org.json.simple.JSONObject) obj.get("geometry");
+                org.json.simple.JSONObject geo = (org.json.simple.JSONObject) obj.get("properties");
+                item = new com.example.myapplication.geo.datalist();
+                item.setType((String) sample.get("type"));
+                if(sample.get("type").equals(str)){    //point data인 경우
+                    item.setIndex(Integer.parseInt(String.valueOf(geo.get("index"))));
+                    item.setDescription((String) geo.get("description"));
+                    item.setTurnType(String.valueOf(geo.get("turnType")));
 
-                            Log.i("type", (String) sample.get("type"));
-                            Log.i("index", String.valueOf(geo.get("index")));
-                            Log.i("경도", String.valueOf(coor.get(0)));
-                            Log.i("위도", String.valueOf(coor.get(1)));
-                            Log.i("turntype", (String.valueOf(geo.get("turnType"))));
-                        }
-                        else{   //line data인 경우
-                            item.setIndex(Integer.parseInt(String.valueOf(geo.get("index"))));
-                            item.setDescription((String) geo.get("description"));
+                    JSONArray coor = (JSONArray) sample.get("coordinates");
+                    item.setLongitude((Double) coor.get(0));
+                    item.setLatitude((Double) coor.get(1));
 
-                            item.setDistance(String.valueOf(geo.get("distance")));
-                            item.setRoadType(String.valueOf(geo.get("roadType")));
-                            item.setFacilityType((String) geo.get("facilityType"));
-
-                            Log.i("type", (String) sample.get("type"));
-                            Log.i("index", String.valueOf(geo.get("index")));
-                            Log.i("road", String.valueOf(geo.get("roadType")));
-                            Log.i("facility", String.valueOf(geo.get("facilityName")));
-                            Log.i("거리", String.valueOf(geo.get("distance") + "m"));
-                        }
-                        list.add(item);
-                    }
-
-                    curIndex = 0;
-                    nextIndex = 0;
-
-                } catch (ParseException e) {
-                    e.printStackTrace();
+                    Log.i("type", (String) sample.get("type"));
+                    Log.i("index", String.valueOf(geo.get("index")));
+                    Log.i("경도", String.valueOf(coor.get(0)));
+                    Log.i("위도", String.valueOf(coor.get(1)));
+                    Log.i("turntype", (String.valueOf(geo.get("turnType"))));
                 }
+                else{   //line data인 경우
+                    item.setIndex(Integer.parseInt(String.valueOf(geo.get("index"))));
+                    item.setDescription((String) geo.get("description"));
+
+                    item.setDistance(String.valueOf(geo.get("distance")));
+                    item.setRoadType(String.valueOf(geo.get("roadType")));
+                    item.setFacilityType((String) geo.get("facilityType"));
+
+                    Log.i("type", (String) sample.get("type"));
+                    Log.i("index", String.valueOf(geo.get("index")));
+                    Log.i("road", String.valueOf(geo.get("roadType")));
+                    Log.i("facility", String.valueOf(geo.get("facilityName")));
+                    Log.i("거리", String.valueOf(geo.get("distance") + "m"));
+                }
+                list.add(item);
             }
-        }).start();
+
+            curIndex = 0;
+            nextIndex = 0;
+
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
     }
 
     //이동거리 계산 및 노드 도착 확인
@@ -516,8 +544,8 @@ public class GeoActivity extends AppCompatActivity implements SensorEventListene
                                     tts.speak(guideText);
                                     fusedLocationClient.removeLocationUpdates(locationCallback);
                                     Intent intent = new Intent(GeoActivity.this, busActivity.class);
-                                    intent.putExtra("endX" , end_lon);
-                                    intent.putExtra("endY", end_lat);
+                                    intent.putExtra("endX" , endX);
+                                    intent.putExtra("endY", endY);
                                     intent.putExtra("transferItem", transferlist);
                                     startActivity(intent);
                                     finish();
